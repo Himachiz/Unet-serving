@@ -14,31 +14,32 @@ jobs:
       # The runner has no checkpoint -- it is gitignored, deliberately.
       # A randomly initialised one is enough to prove the service starts.
       # Generated inside the image, which already has torch.
-      - name: Make a throwaway checkpoint
-        run: |
-          mkdir -p checkpoints
-          docker run --rm -v "$PWD/checkpoints:/srv/checkpoints" \
-            segmentation-service python -c "
-          import torch
-          from app.unet import Unet
-          torch.save({'model': Unet(base=16).state_dict(), 'base': 16,
-                      'in_size': 684, 'out_size': 500, 'val_dice': 0.0},
-                     'checkpoints/random.pt')"
+      - name: Fetch the released model
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/fetch_model.sh
+
 
       - name: Start the service
         run: |
           docker run -d -p 8000:8000 \
             -v "$PWD/checkpoints:/srv/checkpoints" \
             -v "$PWD/samples:/srv/samples" \
-            -e WEIGHTS=checkpoints/random.pt \
+            -e WEIGHTS=checkpoints/unet_lung_best.pt \
             --name seg segmentation-service
-
       - name: Smoke test
         run: |
           for i in $(seq 30); do
-            curl -fs "localhost:8000/predict?image=samples/MCUCXR_0001_0.png" && exit 0
+            if curl -fs "localhost:8000/predict?image=samples/MCUCXR_0001_0.png" -o out.json; then
+              cat out.json
+              python -c "
+          import json, sys
+          frac = json.load(open('out.json'))['lung_fraction']
+          if not 0.10 < frac < 0.45:
+              sys.exit(f'implausible lung_fraction: {frac}')
+          print(f'lung_fraction {frac:.3f} is plausible')"
+              exit 0
+            fi
             sleep 1
           done
-          echo "service never answered"
-          docker logs seg
-          exit 1
+          echo "service never answered"; docker logs seg; exit 1
