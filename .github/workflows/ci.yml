@@ -1,0 +1,44 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the image
+        run: docker build -t segmentation-service .
+
+      # The runner has no checkpoint -- it is gitignored, deliberately.
+      # A randomly initialised one is enough to prove the service starts.
+      # Generated inside the image, which already has torch.
+      - name: Make a throwaway checkpoint
+        run: |
+          mkdir -p checkpoints
+          docker run --rm -v "$PWD/checkpoints:/srv/checkpoints" \
+            segmentation-service python -c "
+          import torch
+          from app.unet import Unet
+          torch.save({'model': Unet(base=16).state_dict(), 'base': 16,
+                      'in_size': 684, 'out_size': 500, 'val_dice': 0.0},
+                     'checkpoints/random.pt')"
+
+      - name: Start the service
+        run: |
+          docker run -d -p 8000:8000 \
+            -v "$PWD/checkpoints:/srv/checkpoints" \
+            -v "$PWD/samples:/srv/samples" \
+            -e WEIGHTS=checkpoints/random.pt \
+            --name seg segmentation-service
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 30); do
+            curl -fs "localhost:8000/predict?image=samples/MCUCXR_0001_0.png" && exit 0
+            sleep 1
+          done
+          echo "service never answered"
+          docker logs seg
+          exit 1
