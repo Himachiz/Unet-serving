@@ -1,10 +1,10 @@
+import os
 from fastapi import FastAPI
-import numpy as np
 from app.model import Model
 
 api = FastAPI()
-model = Model("models/weights.npy")
+model = Model(os.environ["WEIGHTS"])
 
 @api.get("/predict")
-def predict():
-    return {"score": model.predict(np.ones(16))}
+def predict(image: str):
+    return model.predict(image)
