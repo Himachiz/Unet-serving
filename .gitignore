@@ -5,4 +5,5 @@ __pycache__/
 models/
 checkpoints/
 preds/
-samples/
+samples/*
+!samples/fixture.png
