@@ -5,6 +5,9 @@ on: [push, pull_request]
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
 
@@ -43,3 +46,14 @@ jobs:
             sleep 1
           done
           echo "service never answered"; docker logs seg; exit 1
+      - name: Log in to the registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" \
+          | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push, tagged by commit
+        run: |
+          IMAGE=ghcr.io/himachiz/unet-serving
+          docker tag segmentation-service $IMAGE:${{ github.sha }}
+          docker tag segmentation-service $IMAGE:latest
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest

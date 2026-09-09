@@ -1,4 +1,5 @@
 FROM python:3.12-slim
+LABEL org.opencontainers.image.source=https://github.com/Himachiz/Unet-serving
 WORKDIR /srv
 
 # torch first, on its own layer: large, and it almost never changes.
